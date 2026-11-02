@@ -82,16 +82,27 @@ const RightSidebar = () => {
       <>
         <button
           onClick={() => setOpen(true)}
-          className="hidden xl:flex absolute right-4 top-3 z-10 px-3 py-1.5 rounded-full
-          bg-[#202c33] hover:bg-[#2a3942] text-xs text-[#aebac1]"
+          className="flex xl:hidden absolute right-4 top-3 z-10 px-3 py-1.5 rounded-full
+          bg-[#202c33] hover:bg-[#2a3942] text-xs text-[#aebac1] border border-[#374045] shadow-md"
         >
           Group info
         </button>
 
+        {open && (
+          <div
+            className="fixed inset-0 bg-black/50 z-40 xl:hidden"
+            onClick={() => setOpen(false)}
+          />
+        )}
+
         <div
           className={`bg-[#111b21] border-l border-[#222d34] text-[#e9edef]
-          h-full overflow-y-auto transition-all duration-300
-          ${open ? "block" : "hidden xl:block"}`}
+          h-full min-h-0 overflow-y-auto transition-all duration-300
+          ${
+            open
+              ? "fixed inset-y-0 right-0 z-50 w-full sm:w-[360px] max-w-full shadow-2xl xl:static xl:w-auto xl:shadow-none"
+              : "hidden xl:block"
+          }`}
         >
           <div className="bg-[#202c33] flex items-center gap-4 px-4 py-3.5 border-b border-[#222d34]">
             <button
@@ -302,16 +313,27 @@ const RightSidebar = () => {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="hidden xl:flex absolute right-4 top-3 z-10 px-3 py-1.5 rounded-full
-          bg-[#202c33] hover:bg-[#2a3942] text-xs text-[#aebac1]"
+        className="flex xl:hidden absolute right-4 top-3 z-10 px-3 py-1.5 rounded-full
+          bg-[#202c33] hover:bg-[#2a3942] text-xs text-[#aebac1] border border-[#374045] shadow-md"
       >
         Contact info
       </button>
 
+      {open && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 xl:hidden"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
       <div
         className={`bg-[#111b21] border-l border-[#222d34] text-[#e9edef]
-        h-full overflow-y-auto transition-all duration-300
-        ${open ? "block" : "hidden xl:block"}`}
+        h-full min-h-0 overflow-y-auto transition-all duration-300
+        ${
+          open
+            ? "fixed inset-y-0 right-0 z-50 w-full sm:w-[360px] max-w-full shadow-2xl xl:static xl:w-auto xl:shadow-none"
+            : "hidden xl:block"
+        }`}
       >
         <div className="bg-[#202c33] flex items-center gap-4 px-4 py-3.5 border-b border-[#222d34]">
           <button

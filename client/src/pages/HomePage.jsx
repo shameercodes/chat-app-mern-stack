@@ -10,13 +10,12 @@ const HomePage = () => {
   const showRight = selectedUser || selectedGroup;
 
   return (
-    <div className="w-full h-screen bg-[#0b141a]">
+    <div className="w-full h-screen h-[100dvh] max-h-[100dvh] overflow-hidden bg-[#0b141a]">
       <div
-        className={`h-full grid relative
-        ${
+        className={`h-full w-full grid relative overflow-hidden min-h-0 ${
           showRight
-            ? "grid-cols-1 md:grid-cols-[360px_1fr] xl:grid-cols-[360px_1fr_360px]"
-            : "grid-cols-1 md:grid-cols-[360px_1fr]"
+            ? "grid-cols-1 md:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)_360px]"
+            : "grid-cols-1 md:grid-cols-[360px_minmax(0,1fr)]"
         }`}
       >
         <Sidebar />
@@ -27,9 +26,7 @@ const HomePage = () => {
           />
         )}
       </div>
-      
     </div>
-
   );
 };
 

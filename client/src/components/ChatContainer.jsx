@@ -18,6 +18,7 @@ import {
   IoCheckmarkDoneOutline,
   IoCopyOutline,
   IoPencil,
+  IoArrowDown,
 } from "react-icons/io5";
 import { BsThreeDotsVertical, BsReply, BsTrash, BsStar, BsStarFill } from "react-icons/bs";
 import { FaRegSmile, FaPaperclip, FaCamera } from "react-icons/fa";
@@ -97,12 +98,17 @@ const ChatContainer = () => {
     return Date.now() - new Date(msg.createdAt).getTime() < EDIT_WINDOW_MS;
   };
 
+  const messagesContainerRef = useRef(null);
   const scrollEnd = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
   const docInputRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const attachMenuRef = useRef(null);
+
+  const isNearBottomRef = useRef(true);
+  const prevChatKeyRef = useRef(null);
+  const prevMessagesLengthRef = useRef(0);
 
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
@@ -115,6 +121,7 @@ const ChatContainer = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState("");
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
 
   const isOnline =
     selectedUser && onlineUser?.includes(sid(selectedUser?._id));
@@ -128,6 +135,42 @@ const ChatContainer = () => {
     groupTypingMap && Object.keys(groupTypingMap).length > 0;
 
   const isTyping = isGroup ? isGroupTyping : isDmTyping;
+
+  const activeChatKey = selectedUser?._id
+    ? `u:${sid(selectedUser._id)}`
+    : selectedGroup?._id
+    ? `g:${sid(selectedGroup._id)}`
+    : null;
+
+  const scrollToBottom = (behavior = "smooth") => {
+    if (messagesContainerRef.current) {
+      if (behavior === "smooth") {
+        scrollEnd.current?.scrollIntoView({ behavior: "smooth" });
+      } else {
+        messagesContainerRef.current.scrollTop =
+          messagesContainerRef.current.scrollHeight;
+      }
+    }
+    isNearBottomRef.current = true;
+    setShowScrollBottom(false);
+  };
+
+  const handleScroll = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+    const isNear = distanceFromBottom < 100;
+    isNearBottomRef.current = isNear;
+    setShowScrollBottom(!isNear);
+  };
+
+  const handleMediaLoad = () => {
+    if (isNearBottomRef.current && messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop =
+        messagesContainerRef.current.scrollHeight;
+    }
+  };
 
   // ---------------- LOAD MESSAGES ON SELECT ----------------
   useEffect(() => {
@@ -154,10 +197,46 @@ const ChatContainer = () => {
     setEditDraft("");
   }, [selectedUser?._id, selectedGroup?._id]);
 
-  // ---------------- AUTO SCROLL ----------------
+  // ---------------- SMART AUTO SCROLL ----------------
   useEffect(() => {
-    scrollEnd.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping]);
+    if (!activeChatKey) return;
+
+    // 1. Switched conversations -> instant jump to bottom
+    if (prevChatKeyRef.current !== activeChatKey) {
+      prevChatKeyRef.current = activeChatKey;
+      prevMessagesLengthRef.current = messages.length;
+      requestAnimationFrame(() => {
+        scrollToBottom("auto");
+      });
+      return;
+    }
+
+    // 2. New message added
+    if (messages.length > prevMessagesLengthRef.current) {
+      const latestMsg = messages[messages.length - 1];
+      const isMine = latestMsg && idEq(latestMsg.senderId, authUser?._id);
+
+      if (isMine) {
+        // Current user sent the message: always smoothly scroll to bottom
+        scrollToBottom("smooth");
+      } else if (isNearBottomRef.current) {
+        // Recipient was already near bottom: scroll smoothly to new message
+        scrollToBottom("smooth");
+      } else {
+        // Recipient is viewing older messages: keep their place, show scroll-to-bottom prompt
+        setShowScrollBottom(true);
+      }
+    }
+
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages, activeChatKey, authUser?._id]);
+
+  // Scroll for typing indicators only when user is already near bottom
+  useEffect(() => {
+    if (isTyping && isNearBottomRef.current) {
+      scrollEnd.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [isTyping]);
 
   // ---------------- CLOSE EMOJI/ATTACH ON OUTSIDE CLICK ----------------
   useEffect(() => {
@@ -318,7 +397,7 @@ const ChatContainer = () => {
   // ---------------- EMPTY ----------------
   if (!selectedUser && !selectedGroup) {
     return (
-      <div className="hidden md:flex flex-col items-center justify-center bg-[#222e35] text-center px-8 border-l border-[#222d34] wa-chat-bg">
+      <div className="hidden md:flex flex-col items-center justify-center bg-[#222e35] text-center px-8 border-l border-[#222d34] wa-chat-bg h-full min-h-0 overflow-hidden">
         <div className="max-w-md flex flex-col items-center gap-4">
           <div className="w-32 h-32 rounded-full bg-[#202c33] flex items-center justify-center">
             <svg viewBox="0 0 24 24" className="w-20 h-20 text-[#00a884]" fill="currentColor">
@@ -343,9 +422,9 @@ const ChatContainer = () => {
 
   // ---------------- MAIN UI ----------------
   return (
-    <div className="flex flex-col h-full wa-chat-bg relative">
+    <div className="flex flex-col h-full min-h-0 min-w-0 w-full wa-chat-bg relative overflow-hidden">
       {/* HEADER */}
-      <div className="flex items-center gap-3 px-4 py-2.5 bg-[#202c33] border-b border-[#222d34] z-10">
+      <div className="flex items-center gap-3 px-4 py-2.5 bg-[#202c33] border-b border-[#222d34] z-10 shrink-0">
         <button
           onClick={() => clearChatSelection()}
           className="md:hidden text-[#aebac1] p-1"
@@ -416,7 +495,7 @@ const ChatContainer = () => {
       </div>
 
       {searchOpen && (
-        <div className="bg-[#202c33] border-b border-[#222d34] px-4 py-2 flex items-center gap-2">
+        <div className="bg-[#202c33] border-b border-[#222d34] px-4 py-2 flex items-center gap-2 shrink-0 z-10">
           <IoSearchOutline className="text-[#8696a0]" />
           <input
             value={searchTerm}
@@ -437,7 +516,11 @@ const ChatContainer = () => {
       )}
 
       {/* MESSAGES */}
-      <div className="flex-1 overflow-y-auto px-4 md:px-12 py-4">
+      <div
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 min-h-0 overflow-y-auto px-4 md:px-12 py-4 space-y-0.5"
+      >
         {grouped.map((item) => {
           if (item.type === "day") {
             return (
@@ -493,7 +576,7 @@ const ChatContainer = () => {
                 setHovered(null);
               }}
             >
-              <div className="relative max-w-[78%] flex items-start gap-2">
+              <div className="relative max-w-[85%] sm:max-w-[78%] flex items-start gap-2 min-w-0">
                 <div
                   className={`relative px-2 pt-1.5 pb-1.5 rounded-lg shadow-sm fade-up ${
                     isMe
@@ -537,7 +620,8 @@ const ChatContainer = () => {
                         <img
                           src={msg.image}
                           alt=""
-                          className="max-w-[300px] max-h-[400px] rounded mb-1 cursor-pointer"
+                          onLoad={handleMediaLoad}
+                          className="max-w-[300px] max-h-[400px] rounded mb-1 cursor-pointer object-cover"
                           onClick={() => window.open(msg.image, "_blank")}
                         />
                       )}
@@ -569,7 +653,7 @@ const ChatContainer = () => {
 
                       {/* TEXT */}
                       {msg.text && (
-                        <p className="text-sm whitespace-pre-wrap break-words leading-snug px-1">
+                        <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere] leading-snug px-1">
                           {msg.text}
                         </p>
                       )}
@@ -745,7 +829,7 @@ const ChatContainer = () => {
 
       {/* EDIT MESSAGE */}
       {editingId && (
-        <div className="bg-[#1d282f] border-l-4 border-[#53bdeb] mx-3 mt-1 px-3 py-2 rounded flex flex-col gap-2 fade-up z-20">
+        <div className="bg-[#1d282f] border-l-4 border-[#53bdeb] mx-3 mt-1 px-3 py-2 rounded flex flex-col gap-2 fade-up z-20 shrink-0">
           <p className="text-xs text-[#53bdeb] font-medium">Edit message</p>
           <input
             value={editDraft}
@@ -785,7 +869,7 @@ const ChatContainer = () => {
 
       {/* REPLY BAR */}
       {replyTo && (
-        <div className="bg-[#1d282f] border-l-4 border-[#00a884] mx-3 mt-1 px-3 py-2 rounded flex items-center gap-3 fade-up">
+        <div className="bg-[#1d282f] border-l-4 border-[#00a884] mx-3 mt-1 px-3 py-2 rounded flex items-center gap-3 fade-up shrink-0 z-20">
           <div className="flex-1 min-w-0">
             <p className="text-xs text-[#00a884] font-semibold">
               Replying to{" "}
@@ -806,6 +890,18 @@ const ChatContainer = () => {
         </div>
       )}
 
+      {/* SCROLL TO BOTTOM BUTTON */}
+      {showScrollBottom && (
+        <button
+          type="button"
+          onClick={() => scrollToBottom("smooth")}
+          className="absolute bottom-20 right-6 z-30 w-10 h-10 rounded-full bg-[#202c33] text-[#aebac1] hover:text-white border border-[#374045] shadow-2xl flex items-center justify-center hover:bg-[#2a3942] transition fade-up cursor-pointer"
+          title="Scroll to bottom"
+        >
+          <IoArrowDown className="text-xl" />
+        </button>
+      )}
+
       {/* EMOJI PICKER */}
       {showEmoji && (
         <div className="absolute bottom-20 left-3 z-30">
@@ -820,7 +916,7 @@ const ChatContainer = () => {
       )}
 
       {/* INPUT */}
-      <div className="bg-[#202c33] px-3 py-2 flex items-end gap-2">
+      <div className="bg-[#202c33] px-3 py-2 flex items-end gap-2 shrink-0 z-10">
         {recording ? (
           <VoiceRecorder
             onSend={handleSendVoice}

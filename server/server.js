@@ -31,6 +31,7 @@ export const io = new Server(server, {
 
 // store online users
 export const userSocketMap = {}; // {userId : socketId}
+export const userCallMap = {}; // {userId : peerId}
 
 initSocketRegistry(io, userSocketMap);
 
@@ -128,52 +129,93 @@ io.on("connection", (socket) => {
   });
 
   // ---------- WEBRTC CALL SIGNALING ----------
-  socket.on("call:invite", ({ to, kind, offer, caller }) => {
-    const targetSocketId = userSocketMap[normId(to)];
-    if (targetSocketId) {
-      io.to(targetSocketId).emit("call:incoming", {
-        from: userId,
-        kind,
-        offer,
-        caller,
+  socket.on("call:invite", ({ to, kind, offer, caller, callId }) => {
+    if (!userId) return;
+    const targetUserId = normId(to);
+    if (!targetUserId || targetUserId === userId) return;
+
+    const targetSocketId = userSocketMap[targetUserId];
+    if (!targetSocketId) {
+      socket.emit("call:unavailable", { to: targetUserId, callId });
+      return;
+    }
+
+    // Callee is already in a call
+    if (userCallMap[targetUserId]) {
+      socket.emit("call:rejected", {
+        from: targetUserId,
+        reason: "busy",
+        callId,
       });
-    } else {
-      socket.emit("call:unavailable", { to: normId(to) });
+      return;
+    }
+
+    // Register active call pair
+    userCallMap[userId] = targetUserId;
+    userCallMap[targetUserId] = userId;
+
+    io.to(targetSocketId).emit("call:incoming", {
+      from: userId,
+      kind,
+      offer,
+      caller,
+      callId,
+    });
+  });
+
+  socket.on("call:answer", ({ to, answer, callId }) => {
+    if (!userId) return;
+    const targetSocketId = userSocketMap[normId(to)];
+    if (targetSocketId) {
+      io.to(targetSocketId).emit("call:answered", { from: userId, answer, callId });
     }
   });
 
-  socket.on("call:answer", ({ to, answer }) => {
+  socket.on("call:ice", ({ to, candidate, callId }) => {
+    if (!userId) return;
     const targetSocketId = userSocketMap[normId(to)];
     if (targetSocketId) {
-      io.to(targetSocketId).emit("call:answered", { from: userId, answer });
+      io.to(targetSocketId).emit("call:ice", { from: userId, candidate, callId });
     }
   });
 
-  socket.on("call:ice", ({ to, candidate }) => {
-    const targetSocketId = userSocketMap[normId(to)];
+  socket.on("call:reject", ({ to, reason, callId }) => {
+    if (!userId) return;
+    const targetUserId = normId(to);
+    delete userCallMap[userId];
+    delete userCallMap[targetUserId];
+
+    const targetSocketId = userSocketMap[targetUserId];
     if (targetSocketId) {
-      io.to(targetSocketId).emit("call:ice", { from: userId, candidate });
+      io.to(targetSocketId).emit("call:rejected", {
+        from: userId,
+        reason: reason || "declined",
+        callId,
+      });
     }
   });
 
-  socket.on("call:reject", ({ to }) => {
-    const targetSocketId = userSocketMap[normId(to)];
+  socket.on("call:end", ({ to, callId }) => {
+    if (!userId) return;
+    const targetUserId = normId(to);
+    delete userCallMap[userId];
+    delete userCallMap[targetUserId];
+
+    const targetSocketId = userSocketMap[targetUserId];
     if (targetSocketId) {
-      io.to(targetSocketId).emit("call:rejected", { from: userId });
+      io.to(targetSocketId).emit("call:ended", { from: userId, callId });
     }
   });
 
-  socket.on("call:end", ({ to }) => {
-    const targetSocketId = userSocketMap[normId(to)];
-    if (targetSocketId) {
-      io.to(targetSocketId).emit("call:ended", { from: userId });
-    }
-  });
+  socket.on("call:cancel", ({ to, callId }) => {
+    if (!userId) return;
+    const targetUserId = normId(to);
+    delete userCallMap[userId];
+    delete userCallMap[targetUserId];
 
-  socket.on("call:cancel", ({ to }) => {
-    const targetSocketId = userSocketMap[normId(to)];
+    const targetSocketId = userSocketMap[targetUserId];
     if (targetSocketId) {
-      io.to(targetSocketId).emit("call:cancelled", { from: userId });
+      io.to(targetSocketId).emit("call:cancelled", { from: userId, callId });
     }
   });
 
@@ -188,10 +230,26 @@ io.on("connection", (socket) => {
   // ---------- DISCONNECT ----------
   socket.on("disconnect", async () => {
     console.log("User Disconnected", userId);
-    delete userSocketMap[normId(userId)];
-    io.emit("getOnlineUsers", Object.keys(userSocketMap));
-    await updateLastSeen(userId);
-    io.emit("userLastSeen", { userId, lastSeen: new Date() });
+    if (userId && userSocketMap[normId(userId)] === socket.id) {
+      // If user was in an active call or dialing, notify the other peer immediately
+      const activePeerId = userCallMap[userId];
+      if (activePeerId) {
+        delete userCallMap[userId];
+        delete userCallMap[activePeerId];
+        const peerSocketId = userSocketMap[activePeerId];
+        if (peerSocketId) {
+          io.to(peerSocketId).emit("call:ended", {
+            from: userId,
+            reason: "disconnected",
+          });
+        }
+      }
+
+      delete userSocketMap[normId(userId)];
+      io.emit("getOnlineUsers", Object.keys(userSocketMap));
+      await updateLastSeen(userId);
+      io.emit("userLastSeen", { userId, lastSeen: new Date() });
+    }
   });
 });
 

@@ -177,8 +177,8 @@ const Sidebar = () => {
 
   return (
     <div
-      className={`bg-[#111b21] h-full flex flex-col text-[#e9edef]
-      border-r border-[#222d34]
+      className={`bg-[#111b21] h-full min-h-0 min-w-0 flex flex-col text-[#e9edef]
+      border-r border-[#222d34] overflow-hidden
       ${selectedUser || selectedGroup ? "max-md:hidden" : ""}`}
     >
       <NewGroupModal open={newGroupOpen} onClose={() => setNewGroupOpen(false)} />
@@ -293,7 +293,7 @@ const Sidebar = () => {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {displayRows.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-[#8696a0] px-4 text-center">
             <IoSearchOutline className="text-5xl mb-2 opacity-40" />
